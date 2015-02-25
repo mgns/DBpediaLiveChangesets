@@ -1,0 +1,17 @@
+# Routes
+# This file defines all application routes (Higher priority routes first)
+# ~~~~
+
+# Home page
+GET     /                                           controllers.Application.index()
+GET     /changesets/:year                           controllers.Application.changesets(year: Int, month: Int = -1, day: Int = -1, hour: Int = -1, i: Int = -1)
+GET     /changesets/:year/:month                    controllers.Application.changesets(year: Int, month: Int, day: Int = -1, hour: Int = -1, i: Int = -1)
+GET     /changesets/:year/:month/:day               controllers.Application.changesets(year: Int, month: Int, day: Int, hour: Int = -1, i: Int = -1)
+GET     /changesets/:year/:month/:day/:hour         controllers.Application.changesets(year: Int, month: Int, day: Int, hour: Int, i: Int = -1)
+GET     /changesets/:year/:month/:day/:hour/:i      controllers.Application.changesets(year: Int, month: Int, day: Int, hour: Int, i: Int)
+
+GET     /added/:year/:month/:day/:hour/:i      controllers.Application.added(year: Int, month: Int, day: Int, hour: Int, i: Int)
+
+
+# Map static resources from the /public folder to the /assets URL path
+GET     /assets/*file                               controllers.Assets.at(path="/public", file)
