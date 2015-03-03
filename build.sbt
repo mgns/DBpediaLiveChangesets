@@ -11,9 +11,9 @@ libraryDependencies ++= Seq(
   javaEbean,
   cache,
   javaWs,
-  "commons-io" % "commons-io" % "2.4",
   "com.google.guava" % "guava" % "14.0.1",
-  "org.aksw.jena-sparql-api" % "jena-sparql-api-core" % "2.10.0-22"
+  "org.aksw.jena-sparql-api" % "jena-sparql-api-core" % "2.10.0-22",
+  "org.apache.ivy" % "ivy" % "2.4.0"
 )
 
 resolvers += "Local Maven Repository" at "file://"+Path.userHome.absolutePath+"/.m2/repository"

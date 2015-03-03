@@ -3,19 +3,10 @@ package utils;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.hp.hpl.jena.rdf.model.*;
-import org.apache.commons.io.FilenameUtils;
 import play.Logger;
 import play.Play;
-import play.libs.F.Promise;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.nio.channels.Channels;
-import java.nio.channels.ReadableByteChannel;
 import java.util.Collection;
 
 /**
@@ -24,11 +15,11 @@ import java.util.Collection;
 public class DBpediaLiveChangesetsUtil {
 
     public static String base = Play.application().configuration().getString("dbpedia.live.changesets.base");
+    public static String iribase = Play.application().configuration().getString("application.iribase");
     public static String addedSuffix = ".added.nt.gz";
     public static String removedSuffix = ".removed.nt.gz";
-    public static String tmp = Play.application().configuration().getString("local.tmp");
 
-    public static Model getChangesets(String path) {
+/*    public static Model getChangesets(String path) {
 
         File tmpAdded = getFile(path + addedSuffix);
         File tmpRemoved = getFile(path + addedSuffix);
@@ -36,35 +27,13 @@ public class DBpediaLiveChangesetsUtil {
         Model model = createUpdateModel(tmpAdded);
 
         return model;
+    }*/
+
+    public static Model createUpdateModel(File file) {
+        return createUpdateModel(ModelFactory.createDefaultModel(), file);
     }
 
-    public static File getFile(String path) {
-        File tmpFile = new File(FilenameUtils.concat(tmp, path));
-
-        if (tmpFile.exists() && tmpFile.canRead() && tmpFile.isFile())
-            return tmpFile;
-
-        try {
-            URL url = new URL(new URL(base), path);
-
-            ReadableByteChannel rbc = Channels.newChannel(url.openStream());
-            FileOutputStream fos = new FileOutputStream(tmpFile);
-            fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
-
-        } catch (MalformedURLException e) {
-            e.printStackTrace();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return tmpFile;
-    }
-
-    private static Model createUpdateModel(File file) {
-        Model updateModel = ModelFactory.createDefaultModel();
-
+    public static Model createUpdateModel(Model updateModel, File file) {
         if (file.isDirectory()) {
             Logger.debug("DIR  " + file.getAbsolutePath());
             for (File f: file.listFiles()) {
@@ -108,26 +77,34 @@ public class DBpediaLiveChangesetsUtil {
                 while (iter.hasNext()) {
                     Statement stmt = iter.next();
                     Resource s = stmt.getSubject();
-                    stmtMap.put(s, stmt);
+                    Property p = stmt.getPredicate();
+                    if (!p.getLocalName().equals("wikiPageExtracted")) {
+                        stmtMap.put(s, stmt);
+                    }
                 }
             } finally {
                 if (iter != null) iter.close();
             }
 
             for (Resource res : stmtMap.keySet()) {
-                Collection<Statement> stmts = stmtMap.get(res);
+                if (res.getNameSpace().equals("http://de.dbpedia.org/resource/")) {
 
-                Resource update = updateModel.createResource(f.getName().split("\\.")[0] + "/" + res.getNameSpace() + res.getLocalName());
-                Property pTargetSubject = updateModel.createProperty("http://webr3.org/owl/guo#", "target_subject");
-                update.addProperty(pTargetSubject, res);
+                    Logger.debug("Processing " + res.getURI());
 
-                Resource updateGraph = updateModel.createResource();
+                    Collection<Statement> stmts = stmtMap.get(res);
 
-                for (Statement stmt : stmts) {
-                    updateGraph.addProperty(stmt.getPredicate(), stmt.getObject());
+                    Resource update = updateModel.createResource(iribase + f.getName().split("\\.")[0] + "/" + res.getNameSpace().split("//", 2)[1] + res.getLocalName());
+                    Property pTargetSubject = updateModel.createProperty("http://webr3.org/owl/guo#", "target_subject");
+                    update.addProperty(pTargetSubject, res);
+
+                    Resource updateGraph = updateModel.createResource();
+
+                    for (Statement stmt : stmts) {
+                        updateGraph.addProperty(stmt.getPredicate(), stmt.getObject());
+                    }
+
+                    update.addProperty(action, updateGraph);
                 }
-
-                update.addProperty(action, updateGraph);
             }
         } catch (Exception e) {
             Logger.warn("BROKEN FILE " + f.getAbsolutePath() + ": " + e.getStackTrace());
