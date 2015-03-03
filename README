@@ -1,4 +1,4 @@
-This is your new Play application
-=================================
+DBpediaLiveChangesets
+=====================
 
-This file will be packaged with your application, when using `activator dist`.
+Create RDF representations of changesets from DBpedia Live changeset dumps.
