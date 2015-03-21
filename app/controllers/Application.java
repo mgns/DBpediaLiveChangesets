@@ -16,6 +16,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -39,7 +40,7 @@ public class Application extends Controller {
             return Promise.pure((Result) play.mvc.Results.badRequest("Invalid parameter: day > 31"));
         if (hour > 24)
             return Promise.pure((Result) play.mvc.Results.badRequest("Invalid parameter: hour > 24"));
-        if (year < 0 || month < 0 || day < 0 || hour < 0)
+        if (year < 0 || month < 0 || day < 0)
             return Promise.pure(play.mvc.Results.TODO);
 
         Function<Tuple<Model,File>, Model> addFileToModelFunction = new Function<Tuple<Model,File>, Model>() {
@@ -173,7 +174,7 @@ public class Application extends Controller {
                 }
         );
 
-        return promiseOfFiles.get(10000);
+        return promiseOfFiles.get(1, TimeUnit.HOURS);
     }
 
     private static Promise<File> getFile(final String path) {
@@ -187,7 +188,7 @@ public class Application extends Controller {
         } else {
             Logger.info("Getting URL: " + url);
 
-            final Promise<File> promiseOfFile = WS.url(url).setFollowRedirects(true).get().map(
+            final Promise<File> promiseOfFile = WS.url(url).get().map(
                 new Function<WSResponse, File>() {
                     @Override
                     public File apply(WSResponse response) throws Throwable {
