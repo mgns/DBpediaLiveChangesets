@@ -2,7 +2,9 @@ package controllers;
 
 import com.hp.hpl.jena.rdf.model.Model;
 import com.hp.hpl.jena.rdf.model.ModelFactory;
+import model.Changeset;
 import play.*;
+import play.libs.F;
 import play.libs.F.*;
 import play.libs.ws.WS;
 import play.libs.ws.WSResponse;
@@ -43,138 +45,68 @@ public class Application extends Controller {
         if (year < 0 || month < 0 || day < 0)
             return Promise.pure(play.mvc.Results.TODO);
 
-        Function<Tuple<Model,File>, Model> addFileToModelFunction = new Function<Tuple<Model,File>, Model>() {
-            @Override
-            public Model apply(Tuple<Model, File> modelFileTuple) throws Throwable {
-                //Logger.debug("add File " + modelFileTuple._2.getAbsolutePath() + " to model " + modelFileTuple._1);
+        Promise<Changeset> promiseOfChangeset = getChangeset(year, month, day, hour, i);
 
-                Model model = DBpediaLiveChangesetsUtil.createUpdateModel(modelFileTuple._1, modelFileTuple._2);
-                return model;
-            }
-        };
-
-        // TODO implement routine for folders, i.e. hours, days, months
-
-        Collection<Promise<File>> files = new ArrayList<>();
-
-        if (i >= 0) {
-            Promise<File> added = getFile(path + ".added.nt.gz");
-            Promise<File> removed = getFile(path + ".removed.nt.gz");
-
-            files.add(added);
-            files.add(removed);
-        } else if (i < 0) {
-            try {
-                files.addAll(getFiles(path));
-            } catch (Throwable ignore) {
-                Logger.warn("Get files exception: ", ignore);
-            }
-        } else {
-            return Promise.pure((Result) play.mvc.Results.badRequest("Something went wrong."));
+        if (promiseOfChangeset == null) {
+            return Promise.pure((Result) Results.badRequest("Something went wrong."));
         }
 
+        return promiseOfChangeset.map(
+            new Function<Changeset, Result>() {
+                @Override
+                public Result apply(Changeset changeset) throws Throwable {
+                    File tmpFile = new File(Cache.getTmpPath("results/" + path + ".guo.nt"));
+                    tmpFile.getParentFile().mkdirs();
+                    //model.write(new GZIPOutputStream(new FileOutputStream(tmpFile)), "TTL");
+                    Model model = changeset.getGuoModel();
+                    model.write(new FileOutputStream(tmpFile), "TTL");
 
-        // create updateModel
-        Promise<Model> updateModel = Promise.pure(ModelFactory.createDefaultModel());
-        for (Promise<File> file : files) {
-            updateModel = updateModel.zip(file).map(addFileToModelFunction);
-        }
-
-        return updateModel.map(
-                new Function<Model, Result>() {
-                    @Override
-                    public Result apply(Model model) throws Throwable {
-
-                        File tmpFile = new File(Cache.getTmpPath("results/" + path + ".guo.nt"));
-                        tmpFile.getParentFile().mkdirs();
-//                        model.write(new GZIPOutputStream(new FileOutputStream(tmpFile)), "TTL");
-                        model.write(new FileOutputStream(tmpFile), "TTL");
-
-                        return ok(tmpFile);
-                    }
+                    return ok(tmpFile);
                 }
+            }
         );
     }
 
-    private static Collection<Promise<File>> getFiles(final String path) {
-        final String base = Play.application().configuration().getString("dbpedia.live.changesets.base");
-        String url = base + path;
+    private static Promise<Changeset> getChangeset(int year, int month, int day, int hour, int i) {
+        final String path = getPath(year, month, day, hour, i);
 
-        Logger.info("Getting URL: " + url);
+        if (i >= 0) {
+            final Promise<File> promiseOfRemoved = getFile(path + ".removed.nt.gz");
+            final Promise<File> promiseOfAdded = getFile(path + ".added.nt.gz");
 
-        final Promise<Collection<Promise<File>>> promiseOfFiles = WS.url(url).setFollowRedirects(true).get().map(
-                new Function<WSResponse, Collection<Promise<File>>>() {
-                    @Override
-                    public Collection<Promise<File>> apply(WSResponse response) throws Throwable {
-                        Collection<Promise<File>> result = new ArrayList<Promise<File>>();
-//                        Logger.debug("Content-Type: " + response.getHeader("Content-Type"));
+            ChangesetPromise csp = new ChangesetPromise(path, promiseOfRemoved, promiseOfAdded);
+            Promise<Changeset> promiseOfChangeset = getPromiseOfChangeset(csp);
 
-                        if (response.getHeader("Content-Type").startsWith("text/html")) {
-                            String htmlText = response.getBody();
+            return promiseOfChangeset;
+        } else if (i < 0) {
+            
+        }
 
-                            List<String> urlList = new ArrayList<String>();
-                            Matcher matcher = PATTERN.matcher(htmlText);
+        return null;
+    }
 
-                            while (matcher.find()) {
-                                String href = matcher.group(1);
+    private static Promise<Changeset> getPromiseOfChangeset(ChangesetPromise csp) {
+        final String name = csp.name;
+        final Promise<File> promiseOfRemoved = csp.removed;
+        final Promise<File> promiseOfAdded = csp.added;
 
-                                if ((href == null)) {
-                                    // the groups were not found (shouldn't happen, really)
-                                    continue;
-                                }
-
-                                if (href.startsWith("http:") || href.startsWith("https:")) {
-                                    if (!href.startsWith(path)) {
-                                        Logger.info("Ignore URL: " + href);
-                                        continue;
-                                    }
-                                    href = href.substring(path.length());
-                                }
-
-                                if (href.startsWith("../")) {
-                                    // we are only interested in sub-URLs, not parent URLs, so skip this one
-                                    continue;
-                                }
-
-                                // absolute href: convert to relative one
-                                if (href.startsWith("/")) {
-                                    int slashIndex = href.substring(0, href.length() - 1).lastIndexOf('/');
-                                    href = href.substring(slashIndex + 1);
-                                }
-
-                                // relative to current href: convert to simple relative one
-                                if (href.startsWith("./")) {
-                                    href = href.substring("./".length());
-                                }
-
-                                String child = path + href;
-                                urlList.add(child);
-                            }
-
-                            for (String childPath : urlList) {
-                                boolean directory = childPath.endsWith("/");
-                                if (directory) {
-                                    result.addAll(getFiles(childPath));
-                                    continue;
-                                }
-
-                                boolean changesetFile = childPath.endsWith(".added.nt.gz") || childPath.endsWith(".removed.nt.gz");
-                                if (changesetFile) {
-                                    Promise<File> file = getFile(childPath);
-                                    result.add(file);
-                                    continue;
-                                }
-
-                                Logger.info("Ignore URL: " + childPath);
+        Promise<Changeset> promiseOfChangeset = promiseOfRemoved.flatMap(
+            new Function<File, Promise<Changeset>>() {
+                @Override
+                public Promise<Changeset> apply(final File removed) {
+                    return promiseOfAdded.map(
+                        new Function<File, Changeset>() {
+                            @Override
+                            public Changeset apply(File added) throws Throwable {
+                                return new Changeset(name, removed, added);
                             }
                         }
-
-                        return result;
-                    }
+                    );
                 }
+            }
         );
 
-        return promiseOfFiles.get(1, TimeUnit.HOURS);
+        return promiseOfChangeset;
     }
 
     private static Promise<File> getFile(final String path) {
@@ -189,25 +121,25 @@ public class Application extends Controller {
             Logger.info("Getting URL: " + url);
 
             final Promise<File> promiseOfFile = WS.url(url).get().map(
-                new Function<WSResponse, File>() {
-                    @Override
-                    public File apply(WSResponse response) throws Throwable {
-                        InputStream inputStream = null;
-                        try {
+                    new Function<WSResponse, File>() {
+                        @Override
+                        public File apply(WSResponse response) throws Throwable {
+                            InputStream inputStream = null;
+                            try {
 //                            Logger.debug("Content-Type: " + response.getHeader("Content-Type"));
 
-                            inputStream = response.getBodyAsStream();
-                            File file = Cache.set(path, inputStream);
-                            return file;
-                        } catch (IOException e) {
-                            throw e;
-                        } finally {
-                            if (inputStream != null) {
-                                inputStream.close();
+                                inputStream = response.getBodyAsStream();
+                                File file = Cache.set(path, inputStream);
+                                return file;
+                            } catch (IOException e) {
+                                throw e;
+                            } finally {
+                                if (inputStream != null) {
+                                    inputStream.close();
+                                }
                             }
                         }
                     }
-                }
             );
 
             return promiseOfFile;
@@ -224,6 +156,18 @@ public class Application extends Controller {
                                 )
                         )
                 );
+    }
+
+    private static class ChangesetPromise {
+        protected String name;
+        protected Promise<File> removed;
+        protected Promise<File> added;
+
+        public ChangesetPromise(String name, Promise<File> removed, Promise<File> added) {
+            this.name = name;
+            this.removed = removed;
+            this.added = added;
+        }
     }
 
 }

@@ -135,18 +135,19 @@ public class Changeset {
                 Property pTargetSubject = guoModel.createProperty("http://webr3.org/owl/guo#", "target_subject");
                 update.addProperty(pTargetSubject, resource);
 
-                Resource updateGraph = guoModel.createResource();
+                Resource deleteGraph = guoModel.createResource();
                 Property pDelete = guoModel.createProperty("http://webr3.org/owl/guo#", "delete");
                 for (Statement stmt : removed) {
-                    updateGraph.addProperty(stmt.getPredicate(), stmt.getObject());
+                    deleteGraph.addProperty(stmt.getPredicate(), stmt.getObject());
                 }
-                update.addProperty(pDelete, updateGraph);
+                update.addProperty(pDelete, deleteGraph);
 
+                Resource insertGraph = guoModel.createResource();
                 Property pInsert = guoModel.createProperty("http://webr3.org/owl/guo#", "insert");
-                for (Statement stmt : removed) {
-                    updateGraph.addProperty(stmt.getPredicate(), stmt.getObject());
+                for (Statement stmt : added) {
+                    insertGraph.addProperty(stmt.getPredicate(), stmt.getObject());
                 }
-                update.addProperty(pInsert, updateGraph);
+                update.addProperty(pInsert, insertGraph);
             }
         }
 
