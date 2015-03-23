@@ -1,4 +1,8 @@
-DBpediaLiveChangesets
-=====================
+DBpediaLive Changeset Vocalizer
+===============================
 
-Create RDF representations of changesets from DBpedia Live changeset dumps.
+Create various RDF change representations of changesets from DBpedia Live changeset dumps.
+
+Currently, supports the following output formats:
+ * Graph Update Ontology (GUO)
+ * RDF Patch
